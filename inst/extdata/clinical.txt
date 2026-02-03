@@ -1,0 +1,17 @@
+Tumor_Sample_Barcode	stage_T	stage	gender	age
+2	Ⅰ	T2	male	67
+4	Ⅲ	T1	female	81
+5	Ⅰ	T3	male	83
+8	Ⅳ	T2	male	60
+11	Ⅰ	T1	male	78
+12	Ⅲ	T4	female	74
+14	Ⅰ	T2	male	55
+17	Ⅱ	T1	male	63
+18	Ⅳ	T1	male	87
+19	Ⅰ	T3	female	70
+22	Ⅳ	T2	female	68
+23	Ⅲ	T1	female	54
+24	Ⅱ	T3	male	77
+28	Ⅱ	T4	male	69
+31	Ⅳ	T2	male	58
+32	Ⅱ	T1	female	55

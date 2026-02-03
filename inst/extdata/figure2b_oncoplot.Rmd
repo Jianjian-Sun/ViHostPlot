@@ -1,0 +1,307 @@
+---
+title: "figure2b_revision2"
+author: "sunjianjian"
+date: "2025-12-31"
+output: 
+  html_document: 
+  toc: yes
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 一、加载所需R包
+```{r packages, message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(maftools)
+library(aplot)
+library(aplotExtra)
+library(ggfun)
+library(ggplotify)
+library(patchwork)
+```
+
+## 二、定义oncoplot的绘制
+### 1.主函数
+该函数在原有 oncoplot 的基础上，整合：
+  - 主突变矩阵
+  - 样本突变负荷（TMB）
+  - 基因突变比例
+  - 统一图例区域
+```{r oncoplot-function}
+oncoplot <- function(maf, genes = 20, clinical_data = NULL, clinical_vars = NULL) {
+  p_main <- oncoplot_main(maf, genes)
+  p_top <- aplotExtra:::oncoplot_sample(maf, genes)
+  p_right <- aplotExtra:::oncoplot_gene(maf, genes, ylab = 'percentage')
+  p_legend <- oncoplot_legend(maf, genes) # mutation_legend
+  p_spacer <- ggplot() + ggfun::theme_transparent()
+  
+  # 组合频率统计图
+  pp <- aplot::insert_top(p_main, p_spacer, height=.03) |>
+    aplot::insert_top(p_top, height=.2) |>
+    aplot::insert_right(p_spacer, width=.01) |>
+    aplot::insert_right(p_right, width=.2)
+  
+  all_legends <- list()
+  # 依次插入临床信息
+  if (!is.null(clinical_data) && !is.null(clinical_vars)) {
+    colnames(clinical_data)[1] <- "Tumor_Sample_Barcode"
+    for (var in names(clinical_vars)) {
+      if (var %in% colnames(clinical_data)) {
+        p_track <- oncoplot_clinical_track(maf, clinical_data, var, clinical_vars[[var]], genes)
+        leg_obj <- ggfun::get_legend(p_track)
+        all_legends[[length(all_legends) + 1]] <- ggplotify::as.ggplot(leg_obj)
+        # 将临床信息条带插入底部
+        pp <- aplot::insert_bottom(pp, p_track + theme(legend.position = "none"), height = .04)
+      }
+    }
+  }
+
+  pp <- ggplotify::as.ggplot(pp) + p_legend + 
+    plot_layout(widths = c(10, 1.5))
+  
+  pp <- ggplotify::as.ggplot(pp)
+  if (length(all_legends) > 0) {
+    legend_column <- patchwork::wrap_plots(all_legends, ncol = 1) + 
+      plot_layout(guides = "collect") &
+      theme(plot.margin = margin(l = 5, r = 5, t = 10, b = 10))
+    pp <- (pp | legend_column) + plot_layout(widths = c(10, 2))
+  }
+
+  class(pp) <- c("oncoplot", class(pp))
+  
+  return(pp)
+}
+```
+
+### 2.主突变矩阵绘制
+```{r oncoplot-main}
+oncoplot_main <- function(maf, genes = 20) {
+  d <- aplotExtra:::oncoplot_tidy_onco_matrix(maf, genes)
+  
+  p <- ggplot(d, aes(x=.data$Sample, y=.data$Gene, fill=.data$Type)) +
+    geom_tile(colour="white", linewidth=.01) + 
+    aplotExtra:::oncoplot_setting(continuous = FALSE) +
+    theme(
+      legend.position = "none", 
+      axis.text.y.left = element_text(face='italic'),
+      plot.margin = margin(t = 5, r = 2, b = 0, l = 5) 
+    )
+  
+  return(p)
+}
+```
+
+### 3.突变类型图例
+```{r oncoplot-legend}
+oncoplot_legend <- function(maf, genes = 20) {
+  vc_summary <- aplotExtra:::obtain.sample.summary.MAF(maf)
+  present_types <- colnames(vc_summary)[c(-1, -ncol(vc_summary))]
+  # 创建一个包含所有实际类型的虚拟数据集
+  df <- data.frame(Type = present_types, Value = 1)
+  
+  p <- ggplot(df, aes(x = Value, y = Value, fill = Type)) +
+    geom_tile() +
+    aplotExtra:::oncoplot_fill(name = "Mutation Type") + 
+    theme_void() +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(size = 10, face = "bold"),
+      legend.text = element_text(size = 9)
+    ) +
+    guides(fill = guide_legend(ncol = 1, title = "Mutation Type"))
+  
+  leg <- ggfun::get_legend(p)
+  res <- ggplotify::as.ggplot(leg)
+  res <- res + theme(plot.margin = margin(l = 5, r = 5))
+  
+  return(res)
+}
+```
+
+## 3.临床信息轨道绘制函数
+```{r clinical-track}
+oncoplot_clinical_track <- function(maf, clinical_data, var_name,
+                                    type = c("discrete", "continuous"),
+                                    genes = 20, 
+                                    breaks = NULL,
+                                    colors = NULL) {
+  
+  type <- match.arg(type)
+  
+  onco_matrix <- aplotExtra:::oncoplot_tidy_onco_matrix(maf, genes)
+  sample_order <- unique(as.character(onco_matrix$Sample))
+  df <- clinical_data[, c("Tumor_Sample_Barcode", var_name)]
+  df$Tumor_Sample_Barcode <- factor(df$Tumor_Sample_Barcode, levels = sample_order)
+  val <- df[[var_name]]
+  if (type == "continuous") {
+    n_breaks <- ifelse(is.null(breaks), 5, breaks)
+    df[[var_name]] <- cut(val, breaks = n_breaks, include.lowest = TRUE)
+  } else {
+    df[[var_name]] <- as.factor(val)
+  }
+  p <- ggplot(df, aes(x = Tumor_Sample_Barcode, y = var_name, fill = !!sym(var_name))) +
+    geom_tile(color = "white", linewidth = 0.1) +
+    theme_void() +
+    coord_cartesian(expand = FALSE)
+  
+  if (!is.null(colors)) {
+    p <- p + scale_fill_manual(values = colors, name = var_name, na.value = "grey90")
+  } else {
+    p <- p + scale_fill_discrete(na.value = "grey90")
+  }
+  p <- p + 
+    scale_y_discrete(position = "left") +
+    theme(
+      axis.text.y = element_text(size = 10, color = "black", hjust = 1, margin = margin(r = 5)), 
+      axis.title = element_blank(),
+      legend.position = "right",
+      plot.margin = margin(t = 1, b = 1, r = 0, l = 0, unit = "pt")
+    )
+  
+  return(p)
+}
+```
+
+### 4.数据读取与maf构建
+输入文件：按照maf格式的文件
+输出：oncoplot图
+```{r load-data}
+# 读取突变数据
+mut_data <- read.delim("BKM120_Mutation_Data.tsv", header = TRUE)
+# 构建 MAF 对象
+my_maf <- read.maf(maf = mut_data,
+                   vc_nonSyn = c("Missense_Mutation", "Nonsense_Mutation",
+                "Frame_Shift_Ins", "Frame_Shift_Del",
+                "Splice_Site", "RNA"))
+summary(my_maf)
+```
+
+## 5.临床信息读取
+输入：用户想要展示的列的数据
+输出：在构建好的oncoplot下展示
+```{r load-clinical}
+# 读取临床信息
+my_clin <- read.table("clinical.txt", header = TRUE)
+summary(my_clin)
+# 指定变量类型
+my_vars <- list(stage_T = "discrete", stage = "discrete", gender = "discrete", age = "continuous")
+```
+
+## 三、Oncoplot中间过程可视化
+
+### 1.主突变矩阵
+该图仅包含样本 × 基因的突变类型矩阵，是 Oncoplot 的核心主体。
+```{r step1-main, fig.width=12, fig.height=8}
+p_step1 <- oncoplot_main(my_maf, genes = 20)
+p_step1
+```
+
+---
+
+### 2.样本突变负荷（TMB）分布
+展示每个样本中非同义突变的数量，是判断样本突变水平的重要指标。
+```{r step2-add-tmb, fig.width=12, fig.height=9}
+p_tmb <- aplotExtra:::oncoplot_sample(my_maf, genes = 20)
+p_step2 <- aplot::insert_top(
+  p_step1,
+  p_tmb,
+  height = 0.2
+)
+p_step2
+```
+
+---
+
+### 3.基因突变频率统计
+统计每个基因在所有样本中发生突变的比例，常用于筛选高频突变基因。
+```{r step3-add-gene-frequency, fig.width=14, fig.height=9}
+p_gene_freq <- aplotExtra:::oncoplot_gene(maf = my_maf, genes = 20, ylab = "percentage")
+p_step3 <- aplot::insert_right(
+  p_step2,
+  p_gene_freq,
+  width = 0.25
+)
+p_step3
+```
+
+---
+
+### 4.临床信息轨道示例
+以下示例分别展示离散型与连续型临床变量在 Oncoplot 中的呈现方式。
+```{r step4-add-clinical, fig.width=14, fig.height=11}
+p_step4 <- p_step3
+for (var in names(my_vars)) {
+  p_track <- oncoplot_clinical_track(
+    maf = my_maf,
+    clinical_data = my_clin,
+    var_name = var,
+    type = my_vars[[var]],
+    genes = 20
+  )
+  
+  p_step4 <- aplot::insert_bottom(
+    p_step4,
+    p_track + theme(legend.position = "none"),
+    height = 0.04
+  )
+}
+p_step4
+```
+
+---
+
+## 5.Oncoplot最终结果展示
+```{r step5-final, fig.width=15, fig.height=15}
+p_final <- oncoplot(
+  maf = my_maf,
+  clinical_data = my_clin,
+  clinical_vars = my_vars
+)
+p_final
+```
+
+---
+
+## 四、讨论
+最先的逻辑是使用aplot对标签进行拼接，aplot会自动将图例拼接放在图的最右侧，但是对于oncoplot图来说，如果将主突变矩阵和标签一起输出时，并不会自动的将图例放在最右侧，这可能是oncoplot的图例是较复杂的离散图例，不会自动拼接。
+```{r oncoplot-main-error1}
+oncoplot_main <- function(maf, genes = 20) {
+  d <- aplotExtra:::oncoplot_tidy_onco_matrix(maf, genes)
+
+  p <- ggplot(d, aes(x=.data$Sample, y=.data$Gene, fill=.data$Type)) +
+    geom_tile(colour="white", linewidth=.01) + 
+    aplotExtra:::oncoplot_setting(continuous = FALSE) +
+    theme(legend.position = "right",
+    axis.text.y.left = element_text(face='italic'),
+    plot.margin = margin(t = 5, r = 2, b = 0, l = 5) 
+  ) +
+    guides(fill = guide_legend(ncol = 1, title = "Mutation Type"))
+
+  return(p)
+}
+
+oncoplot <- function(maf, genes = 20) {
+  p_main <- oncoplot_main(maf, genes)
+  p_top <- aplotExtra:::oncoplot_sample(maf, genes)
+  p_right <- aplotExtra:::oncoplot_gene(maf, genes, ylab = 'percentage')
+  p_spacer <- ggplot() + ggfun::theme_transparent()
+  
+  # 组合oncoplot
+  pp <- aplot::insert_top(p_main, p_spacer, height=.03) |> 
+    aplot::insert_top(p_top, height=.2) |>
+    aplot::insert_right(p_spacer, width=.01) |>
+    aplot::insert_right(p_right, width=.2)
+
+  class(pp) <- c("oncoplot", class(pp))
+  
+  return(pp)
+}
+
+p_final <- oncoplot(maf = my_maf)
+print(p_final)
+```
+

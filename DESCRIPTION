@@ -11,10 +11,19 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports: 
     aplot,
+    circlize,
+    dplyr,
+    GenomicRanges,
     ggfun,
     ggplot2,
     ggplotify,
+    InteractionSet,
+    IRanges,
     maftools,
-    patchwork
+    patchwork,
+    S4Vectors,
+    stringr,
+    SummarizedExperiment,
+    VariantAnnotation
 Depends: 
     aplotExtra
