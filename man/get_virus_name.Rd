@@ -2,19 +2,17 @@
 % Please edit documentation in R/circos.R
 \name{get_virus_name}
 \alias{get_virus_name}
-\title{Detect Virus Name from Chromosome Sizes
-logic: Exclusion of mitochondria, then finding the shortest sequence.}
+\title{Detect Virus Sequence}
 \usage{
 get_virus_name(chrom_sizes_df)
 }
 \arguments{
-\item{chrom_sizes_df}{Data frame with 'chr' and 'end'.}
+\item{chrom_sizes_df}{Data frame returned by \code{read_chrom_sizes()}.}
 }
 \value{
-A list containing 'name' and 'length' of the virus.
+The inferred virus sequence name.
 }
 \description{
-Detect Virus Name from Chromosome Sizes
-logic: Exclusion of mitochondria, then finding the shortest sequence.
+Detect Virus Sequence
 }
 \keyword{internal}

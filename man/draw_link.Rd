@@ -2,17 +2,20 @@
 % Please edit documentation in R/circos.R
 \name{draw_link}
 \alias{draw_link}
-\title{Draw Link Layer (Arcs)}
+\title{Draw Link Layer in Genomic Mode}
 \usage{
 draw_link(link_data, cfg, radius = NULL)
 }
 \arguments{
-\item{link_data}{Data frame. Must contain columns: seqnames1, start1, seqnames2, start2, Source(optional).}
+\item{link_data}{Data frame converted from a \code{GInteractions} object.}
 
-\item{cfg}{List. Configuration list containing data about chromosomes.}
+\item{cfg}{Plotting configuration list.}
 
-\item{radius}{Numeric (Optional). The radius to draw links on. If NULL, defaults to the bottom of the current track.}
+\item{radius}{Optional link radius.}
+}
+\value{
+Invisibly returns \code{NULL}.
 }
 \description{
-Draw Link Layer (Arcs)
+Draw Link Layer in Genomic Mode
 }

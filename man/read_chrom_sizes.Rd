@@ -2,17 +2,17 @@
 % Please edit documentation in R/circos.R
 \name{read_chrom_sizes}
 \alias{read_chrom_sizes}
-\title{Read Chromosome Sizes File}
+\title{Read Chromosome Sizes}
 \usage{
 read_chrom_sizes(path)
 }
 \arguments{
-\item{path}{Path to the chromosome sizes text file (two columns: name, length).}
+\item{path}{Path to a tab-delimited chromosome-size table.}
 }
 \value{
-A data frame with columns 'chr' and 'end'.
+A data frame with columns \code{chr}, \code{start}, and \code{end}.
 }
 \description{
-Read Chromosome Sizes File
+Read Chromosome Sizes
 }
 \keyword{internal}

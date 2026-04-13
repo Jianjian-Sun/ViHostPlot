@@ -4,19 +4,17 @@
 \alias{create_config}
 \title{Create Plotting Configuration}
 \usage{
-create_config(host_file, virus_info, visual_ratio, color_file)
+create_config(chrom_file, visual_ratio = 0.1, color_file = NULL)
 }
 \arguments{
-\item{host_file}{Path to host file.}
+\item{chrom_file}{Path to a chromosome-size table.}
 
-\item{virus_info}{List of virus name and length.}
+\item{visual_ratio}{Visual proportion assigned to the virus sector.}
 
-\item{visual_ratio}{Visual ratio for the virus sector.}
-
-\item{color_file}{Optional path to color CSV.}
+\item{color_file}{Optional path to a two-column color table.}
 }
 \value{
-A list containing plotting configuration.
+A plotting configuration list.
 }
 \description{
 Create Plotting Configuration

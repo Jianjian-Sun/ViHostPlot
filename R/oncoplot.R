@@ -50,12 +50,18 @@ oncoplot_main <- function(maf, genes = 20) {
 
   ggplot2::ggplot(d, ggplot2::aes(x = .data$Sample, y = .data$Gene, fill = .data$Type)) +
     ggplot2::geom_tile(colour = "white", linewidth = .01) +
-    aplotExtra:::oncoplot_setting(continuous = FALSE) +
+    ggplot2::theme_minimal() +
+    ggfun::theme_noxaxis() +
+    aplotExtra:::oncoplot_scale(continuous = FALSE, scale = "y") +
+    aplotExtra:::oncoplot_fill(name = "Mutation Type") +
     ggplot2::theme(
-      legend.position = "none",
-      axis.text.y.left = ggplot2::element_text(face = 'italic'),
+      legend.position = "right",
+      panel.grid.major = ggplot2::element_blank(),
+      axis.text.y.left = ggplot2::element_text(face = "italic"),
       plot.margin = ggplot2::margin(t = 5, r = 2, b = 0, l = 5)
-    )
+    ) +
+    ggplot2::xlab(NULL) +
+    ggplot2::ylab(NULL)
 }
 
 #' @importFrom maftools getClinicalData
@@ -135,3 +141,4 @@ binning_numeric <- function(x, n_breaks = 5) {
 
   return(binned)
 }
+

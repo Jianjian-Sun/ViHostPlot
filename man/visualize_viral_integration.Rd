@@ -2,55 +2,42 @@
 % Please edit documentation in R/circos.R
 \name{visualize_viral_integration}
 \alias{visualize_viral_integration}
-\title{Visualize Viral Integration Events
-Generates a Circos plot to visualize viral integration sites on host chromosomes.}
+\title{Visualize Host-Virus Integration Events}
 \usage{
 visualize_viral_integration(
   input_file,
-  host_file,
-  layout_list,
-  output_file = "Result.pdf",
+  chrom_file,
+  layout_list = create_host_virus_layout(...),
   color_file = NULL,
-  visual_ratio = 0.1
+  visual_ratio = 0.1,
+  clear = TRUE
 )
 }
 \arguments{
-\item{input_file}{Path to the viral integration results file (Tab-delimited).}
+\item{input_file}{Path to a tab-delimited integration table with columns
+\code{chr}, \code{host_loc}, \code{viral_loc}, \code{reads},
+\code{sample}, \code{viral_strand}, and \code{method}.}
 
-\item{host_file}{Path to the chromosome sizes file (Must contain host chromosomes AND the virus info).}
+\item{chrom_file}{Path to a tab-delimited chromosome-size table with columns
+\code{chr}, \code{start}, and \code{end}. It must include the host
+chromosomes and the virus sequence.}
 
-\item{output_file}{Path to the output PDF file. Default is "Result.pdf".}
+\item{layout_list}{A list of track definitions. Supported \code{type} values
+are \code{"ideogram"}, \code{"scatter"}, and \code{"links"}.}
 
-\item{color_file}{Optional path to a CSV file specifying chromosome colors (No header, Col1=Name, Col2=Color).}
+\item{color_file}{Optional path to a two-column color table.}
 
-\item{visual_ratio}{The visual proportion of the circle occupied by the virus sector. Default is 0.1 (10\%).}
+\item{visual_ratio}{Visual proportion assigned to the virus sector.}
+
+\item{clear}{Logical. Whether to clear the existing circlize plot before
+drawing.}
 }
 \value{
-None. A PDF file is generated at the specified path.
+Invisibly returns a list with \code{cfg}, \code{gi}, and
+\code{data}.
 }
 \description{
-Visualize Viral Integration Events
-Generates a Circos plot to visualize viral integration sites on host chromosomes.
-}
-\examples{
-\dontrun{
-# 获取包内的示例数据路径
-data_path <- system.file("extdata", "data.txt", package = "ViHostPlot")
-host_path <- system.file("extdata", "chrom_sizes.txt", package = "ViHostPlot")
-
-# 定义布局
-layout_demo <- list(
-  list(type = "ideogram", height = 0.05),
-  list(type = "scatter", sample_label = "T", height = 0.15),
-  list(type = "links")
-)
-
-# 运行绘图
-visualize_viral_integration(
-  input_file = data_path,
-  host_file = host_path,
-  layout_list = layout_demo,
-  output_file = "Example_Result.pdf"
-)
-}
+Draw a host-virus circos plot on the current graphics device from an
+integration table and a chromosome-size table. No intermediate VCF is
+created and no output file is opened by this function.
 }

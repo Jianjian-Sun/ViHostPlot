@@ -2,15 +2,18 @@
 % Please edit documentation in R/circos.R
 \name{draw_ideogram}
 \alias{draw_ideogram}
-\title{Draw Ideogram Track}
+\title{Draw Ideogram Track in Genomic Mode}
 \usage{
 draw_ideogram(height, cfg)
 }
 \arguments{
-\item{height}{Numeric. The height of the track}
+\item{height}{Numeric. Track height.}
 
-\item{cfg}{List. The configuration list containing \code{grid_col} (colors).}
+\item{cfg}{Plotting configuration list.}
+}
+\value{
+Invisibly returns \code{NULL}.
 }
 \description{
-Draw Ideogram Track
+Draw Ideogram Track in Genomic Mode
 }

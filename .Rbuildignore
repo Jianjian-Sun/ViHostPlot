@@ -1,2 +1,4 @@
 ^ViHostPlot\.Rproj$
 ^\.Rproj\.user$
+^\.Rhistory$
+^\.\.Rcheck$

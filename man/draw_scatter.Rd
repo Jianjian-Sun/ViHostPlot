@@ -2,22 +2,24 @@
 % Please edit documentation in R/circos.R
 \name{draw_scatter}
 \alias{draw_scatter}
-\title{Draw Scatter Plot Track}
+\title{Draw Scatter Track in Genomic Mode}
 \usage{
 draw_scatter(data, height, cfg, label_col = "Label", point_color = "blue")
 }
 \arguments{
-\item{data}{Data frame. The full dataset (must be converted from GI object).
-Must contain columns: seqnames1, start1, Depth.}
+\item{data}{Data frame converted from a \code{GInteractions} object.}
 
-\item{height}{Numeric. The height of the track.}
+\item{height}{Numeric. Track height.}
 
-\item{cfg}{List. Configuration list.}
+\item{cfg}{Plotting configuration list.}
 
-\item{label_col}{String. The column name in \code{data} to use for identifying the sample.}
+\item{label_col}{Label column name. Kept for API compatibility.}
 
-\item{point_color}{String. Color of the points. Default is "blue".}
+\item{point_color}{Default point color.}
+}
+\value{
+Invisibly returns \code{NULL}.
 }
 \description{
-Draw Scatter Plot Track
+Draw Scatter Track in Genomic Mode
 }
