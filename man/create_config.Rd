@@ -4,14 +4,24 @@
 \alias{create_config}
 \title{Create Plotting Configuration}
 \usage{
-create_config(chrom_file, visual_ratio = 0.1, color_file = NULL)
+create_config(
+  chrom_file,
+  virus_name,
+  visual_ratio = 0.1,
+  color_file = NULL,
+  palettes = NULL
+)
 }
 \arguments{
 \item{chrom_file}{Path to a chromosome-size table.}
 
+\item{virus_name}{Name of the virus sequence in \code{chrom_file}.}
+
 \item{visual_ratio}{Visual proportion assigned to the virus sector.}
 
 \item{color_file}{Optional path to a two-column color table.}
+
+\item{palettes}{Optional list of RColorBrewer palettes or named colors.}
 }
 \value{
 A plotting configuration list.

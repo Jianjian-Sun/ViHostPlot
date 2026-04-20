@@ -4,7 +4,14 @@
 \alias{oncoplot}
 \title{Generate a oncoplot with clinical tracks}
 \usage{
-oncoplot(maf, genes = 20, clinical_vars = NULL, n_breaks = 5, colors = NULL)
+oncoplot(
+  maf,
+  genes = 20,
+  clinical_vars = NULL,
+  n_breaks = 5,
+  colors = NULL,
+  clinical_palettes = NULL
+)
 }
 \arguments{
 \item{maf}{MAF object.}
@@ -16,6 +23,8 @@ oncoplot(maf, genes = 20, clinical_vars = NULL, n_breaks = 5, colors = NULL)
 \item{n_breaks}{Integer. Number of breaks for continuous clinical variables. Default is 5.}
 
 \item{colors}{A named list of customized colors for clinical tracks.}
+
+\item{clinical_palettes}{A named list or character vector of RColorBrewer palettes for clinical tracks.}
 }
 \value{
 A combined plot object (class depends on \code{aplot} output).

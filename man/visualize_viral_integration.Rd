@@ -7,8 +7,10 @@
 visualize_viral_integration(
   input_file,
   chrom_file,
-  layout_list = create_host_virus_layout(...),
+  virus_name,
+  layout_list = create_host_virus_layout(),
   color_file = NULL,
+  palettes = NULL,
   visual_ratio = 0.1,
   clear = TRUE
 )
@@ -22,10 +24,17 @@ visualize_viral_integration(
 \code{chr}, \code{start}, and \code{end}. It must include the host
 chromosomes and the virus sequence.}
 
+\item{virus_name}{Name of the virus sequence in \code{chrom_file}.}
+
 \item{layout_list}{A list of track definitions. Supported \code{type} values
-are \code{"ideogram"}, \code{"scatter"}, and \code{"links"}.}
+are \code{"ideogram"}, \code{"scatter"}, \code{"histogram"}, and
+\code{"links"}.}
 
 \item{color_file}{Optional path to a two-column color table.}
+
+\item{palettes}{Optional list of RColorBrewer palettes or named colors.
+Supported names are \code{chromosomes}, \code{methods}, and
+\code{histogram}.}
 
 \item{visual_ratio}{Visual proportion assigned to the virus sector.}
 

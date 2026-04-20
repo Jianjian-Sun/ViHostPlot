@@ -6,14 +6,21 @@
 \usage{
 create_host_virus_layout(
   include_ideogram = TRUE,
+  include_scatter = TRUE,
+  include_histogram = FALSE,
   include_links = TRUE,
   sample_label = NULL,
   ideogram_height = 0.08,
-  scatter_height = 0.15
+  scatter_height = 0.15,
+  histogram_height = 0.12
 )
 }
 \arguments{
 \item{include_ideogram}{Logical. Whether to include the ideogram track.}
+
+\item{include_scatter}{Logical. Whether to include the scatter track.}
+
+\item{include_histogram}{Logical. Whether to include a histogram track.}
 
 \item{include_links}{Logical. Whether to include the link layer.}
 
@@ -22,6 +29,8 @@ create_host_virus_layout(
 \item{ideogram_height}{Numeric. Ideogram track height.}
 
 \item{scatter_height}{Numeric. Scatter track height.}
+
+\item{histogram_height}{Numeric. Histogram track height.}
 }
 \value{
 A layout list for \code{visualize_viral_integration()}.

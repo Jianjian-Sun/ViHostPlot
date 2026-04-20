@@ -4,7 +4,7 @@
 \alias{draw_scatter}
 \title{Draw Scatter Track in Genomic Mode}
 \usage{
-draw_scatter(data, height, cfg, label_col = "Label", point_color = "blue")
+draw_scatter(data, height, cfg, point_color = "blue")
 }
 \arguments{
 \item{data}{Data frame converted from a \code{GInteractions} object.}
@@ -12,8 +12,6 @@ draw_scatter(data, height, cfg, label_col = "Label", point_color = "blue")
 \item{height}{Numeric. Track height.}
 
 \item{cfg}{Plotting configuration list.}
-
-\item{label_col}{Label column name. Kept for API compatibility.}
 
 \item{point_color}{Default point color.}
 }
