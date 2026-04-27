@@ -1,23 +1,32 @@
 #' Visualize Host-Virus Integration Events
 #'
 #' Draw a host-virus circos plot on the current graphics device from an
-#' integration table and a chromosome-size table. No intermediate VCF is
+#' integration table and host chromosome-size information. The host genome can
+#' be supplied through a standard host name such as \code{"human"} or
+#' \code{"mouse"}, which is resolved online to a UCSC assembly and fetched as
+#' chromosome sizes, or through a custom host chromosome-size table. The virus
+#' sequence name and length are supplied explicitly. No intermediate VCF is
 #' created and no output file is opened by this function.
 #'
 #' @param input_file Path to a tab-delimited integration table with columns
 #'   \code{chr}, \code{host_loc}, \code{viral_loc}, \code{reads},
 #'   \code{sample}, \code{viral_strand}, and \code{method}.
-#' @param chrom_file Path to a tab-delimited chromosome-size table with columns
-#'   \code{chr}, \code{start}, and \code{end}. It must include the host
-#'   chromosomes and the virus sequence.
-#' @param virus_name Name of the virus sequence in \code{chrom_file}.
-#' @param layout_list A list of track definitions. Supported \code{type} values
-#'   are \code{"ideogram"}, \code{"scatter"}, \code{"histogram"}, and
-#'   \code{"links"}.
-#' @param color_file Optional path to a two-column color table.
-#' @param palettes Optional list of RColorBrewer palettes or named colors.
-#'   Supported names are \code{chromosomes}, \code{methods}, and
-#'   \code{histogram}.
+#' @param host Character scalar specifying a standard host genome name or a
+#'   UCSC assembly name. Common aliases such as \code{"human"} and
+#'   \code{"mouse"} are supported.
+#' @param chrom_file Optional path to a host chromosome-size table with columns
+#'   \code{chr}, \code{start}, and \code{end}. Use this when \code{host} is not
+#'   supplied or when a custom host genome is needed. This file should contain
+#'   host chromosomes only; the virus sequence is added separately from
+#'   \code{virus_name} and \code{virus_length}.
+#' @param virus_name Name of the virus sequence.
+#' @param virus_length Length of the virus sequence in base pairs.
+#' @param layout_list A list of track definitions, for example
+#'   \code{list(list(type = "ideogram", height = 0.08), list(type = "scatter",
+#'   sample_label = "T", height = 0.15), list(type = "scatter",
+#'   sample_label = "N", height = 0.15), list(type = "links"))}.
+#'   Supported \code{type} values are \code{"ideogram"}, \code{"scatter"},
+#'   \code{"histogram"}, and \code{"links"}.
 #' @param visual_ratio Visual proportion assigned to the virus sector.
 #' @param clear Logical. Whether to clear the existing circlize plot before
 #'   drawing.
@@ -26,26 +35,24 @@
 #'   \code{data}.
 #' @export
 visualize_viral_integration <- function(input_file,
-                                        chrom_file,
+                                        host = NULL,
+                                        chrom_file = NULL,
                                         virus_name,
-                                        layout_list = create_host_virus_layout(),
-                                        color_file = NULL,
-                                        palettes = NULL,
+                                        virus_length,
+                                        layout_list,
                                         visual_ratio = 0.1,
                                         clear = TRUE) {
   validate_layout_list(layout_list)
 
   cfg <- create_config(
+    host = host,
     chrom_file = chrom_file,
     virus_name = virus_name,
-    visual_ratio = visual_ratio,
-    color_file = color_file,
-    palettes = palettes
+    virus_length = virus_length,
+    visual_ratio = visual_ratio
   )
   gi <- create_gi_from_table(input_file = input_file, cfg = cfg)
   plot_df <- as.data.frame(gi)
-  cfg$method_col <- make_method_colors(plot_df$Source, palettes = palettes)
-  cfg$hist_col <- make_histogram_color(palettes = palettes)
 
   if (clear) {
     circlize::circos.clear()
@@ -55,7 +62,7 @@ visualize_viral_integration <- function(input_file,
   gaps <- rep(1, n_sectors)
   virus_idx <- which(cfg$data$chr == cfg$virus_name)
   if (length(virus_idx) > 0) {
-    gaps[virus_idx] <- 15
+    gaps[virus_idx] <- 10
   }
 
   circlize::circos.par(
@@ -77,146 +84,132 @@ visualize_viral_integration <- function(input_file,
     height <- if (is.null(task$height)) 0.05 else task$height
 
     if (task$type == "ideogram") {
-      draw_ideogram(height = height, cfg = cfg)
+      draw_ideogram(
+        height = height,
+        cfg = cfg,
+        grid_col = task$grid_col,
+        border_col = task$border_col
+      )
     } else if (task$type == "scatter") {
       sub_df <- filter_plot_data(plot_df, sample_label = task$sample_label)
-      draw_scatter(data = sub_df, height = height, cfg = cfg)
+      draw_scatter(
+        data = sub_df,
+        height = height,
+        cfg = cfg,
+        method_col = task$method_col,
+        point_color = task$point_color,
+        baseline_col = task$baseline_col
+      )
     } else if (task$type == "histogram") {
       sub_df <- filter_plot_data(plot_df, sample_label = task$sample_label)
-      draw_histogram(data = sub_df, height = height, cfg = cfg, bins = task$bins)
+      draw_histogram(
+        data = sub_df,
+        height = height,
+        cfg = cfg,
+        bins = task$bins,
+        col = task$col
+      )
     } else if (task$type == "links") {
-      draw_link(link_data = plot_df, cfg = cfg, radius = task$radius)
+      draw_link(
+        link_data = plot_df,
+        cfg = cfg,
+        radius = task$radius,
+        method_col = task$method_col,
+        default_col = task$default_col
+      )
     } else {
       warning("Skipping unsupported track type: ", task$type)
     }
   }
 
-  if (layout_has_any(layout_list, c("scatter", "links"))) {
-    draw_method_legend(cfg$method_col)
+  legend_spec <- get_method_legend_spec(layout_list, plot_df)
+  if (!is.null(legend_spec)) {
+    draw_method_legend(legend_spec)
   }
 
   invisible(list(cfg = cfg, gi = gi, data = plot_df))
 }
 
-#' Create a Default Host-Virus Layout
-#'
-#' @param include_ideogram Logical. Whether to include the ideogram track.
-#' @param include_scatter Logical. Whether to include the scatter track.
-#' @param include_histogram Logical. Whether to include a histogram track.
-#' @param include_links Logical. Whether to include the link layer.
-#' @param sample_label Optional sample labels for the scatter track.
-#' @param ideogram_height Numeric. Ideogram track height.
-#' @param scatter_height Numeric. Scatter track height.
-#' @param histogram_height Numeric. Histogram track height.
-#' @return A layout list for \code{visualize_viral_integration()}.
-#' @export
-create_host_virus_layout <- function(include_ideogram = TRUE,
-                                     include_scatter = TRUE,
-                                     include_histogram = FALSE,
-                                     include_links = TRUE,
-                                     sample_label = NULL,
-                                     ideogram_height = 0.08,
-                                     scatter_height = 0.15,
-                                     histogram_height = 0.12) {
-  layout <- list()
-  if (include_ideogram) {
-    layout[[length(layout) + 1]] <- list(type = "ideogram", height = ideogram_height)
-  }
-  if (include_scatter) {
-    layout[[length(layout) + 1]] <- list(
-      type = "scatter",
-      sample_label = sample_label,
-      height = scatter_height
-    )
-  }
-  if (include_histogram) {
-    layout[[length(layout) + 1]] <- list(
-      type = "histogram",
-      sample_label = sample_label,
-      height = histogram_height
-    )
-  }
-  if (include_links) {
-    layout[[length(layout) + 1]] <- list(type = "links")
-  }
-  layout
-}
-
-#' Read Chromosome Sizes
-#'
-#' @param path Path to a tab-delimited chromosome-size table.
-#' @return A data frame with columns \code{chr}, \code{start}, and \code{end}.
-#' @keywords internal
-read_chrom_sizes <- function(path) {
-  if (!file.exists(path)) {
-    stop("File not found: ", path)
-  }
-
-  df <- utils::read.table(
-    path,
-    header = TRUE,
-    sep = "\t",
-    stringsAsFactors = FALSE,
-    check.names = FALSE
+ensure_host_chrom_utils_loaded <- function() {
+  needed <- c(
+    "read_chrom_sizes",
+    "resolve_ucsc_assembly",
+    "fetch_ucsc_chrom_sizes",
+    "resolve_host_chrom_sizes"
   )
 
-  required_cols <- c("chr", "start", "end")
-  missing_cols <- setdiff(required_cols, colnames(df))
-  if (length(missing_cols) > 0) {
-    stop("chrom_sizes.txt must contain columns: chr, start, end")
+  if (all(vapply(needed, exists, logical(1), mode = "function", inherits = TRUE))) {
+    return(invisible(TRUE))
   }
 
-  df$chr <- as.character(df$chr)
-  df$start <- as.numeric(df$start)
-  df$end <- as.numeric(df$end)
-  df <- df[!is.na(df$chr) & !is.na(df$start) & !is.na(df$end), , drop = FALSE]
-
-  if (nrow(df) == 0) {
-    stop("No valid chromosome sizes were found.")
+  helper_path <- file.path(getwd(), "host_chrom_utils.R")
+  if (!file.exists(helper_path)) {
+    stop("host_chrom_utils.R was not found in the current working directory.", call. = FALSE)
   }
 
-  df
+  sys.source(helper_path, envir = .GlobalEnv)
+
+  if (!all(vapply(needed, exists, logical(1), mode = "function", inherits = TRUE))) {
+    stop("Failed to load host chromosome helper functions from host_chrom_utils.R.", call. = FALSE)
+  }
+
+  invisible(TRUE)
 }
 
-validate_virus_name <- function(virus_name, valid_chr) {
+validate_virus_info <- function(virus_name, virus_length, host_chr) {
   if (missing(virus_name) || is.null(virus_name) || length(virus_name) != 1 ||
       is.na(virus_name) || !nzchar(virus_name)) {
-    stop("virus_name must be a single non-empty sequence name from chrom_file.")
+    stop("virus_name must be a single non-empty sequence name.")
   }
 
-  virus_name <- match_chr_style(virus_name, valid_chr)
-  if (!virus_name %in% valid_chr) {
-    stop(
-      "virus_name was not found in chrom_file: ", virus_name,
-      ". Available sequences: ", paste(valid_chr, collapse = ", "),
-      call. = FALSE
-    )
+  virus_name <- trimws(gsub("(?i)^chr", "", as.character(virus_name)))
+
+  if (!is.numeric(virus_length) || length(virus_length) != 1 ||
+      is.na(virus_length) || virus_length <= 0) {
+    stop("virus_length must be a single positive number.", call. = FALSE)
   }
 
-  virus_name
+  virus_length <- as.numeric(virus_length)
+
+  if (virus_name %in% host_chr) {
+    stop("virus_name conflicts with a host chromosome name: ", virus_name, call. = FALSE)
+  }
+
+  list(
+    virus_name = virus_name,
+    virus_length = virus_length
+  )
 }
 
 #' Create Plotting Configuration
 #'
-#' @param chrom_file Path to a chromosome-size table.
-#' @param virus_name Name of the virus sequence in \code{chrom_file}.
+#' @param host Character scalar specifying a built-in host genome.
+#' @param chrom_file Optional path to a host chromosome-size table.
+#' @param virus_name Name of the virus sequence.
+#' @param virus_length Length of the virus sequence in base pairs.
 #' @param visual_ratio Visual proportion assigned to the virus sector.
-#' @param color_file Optional path to a two-column color table.
-#' @param palettes Optional list of RColorBrewer palettes or named colors.
 #' @return A plotting configuration list.
 #' @keywords internal
-create_config <- function(chrom_file,
+create_config <- function(host = NULL,
+                          chrom_file = NULL,
                           virus_name,
-                          visual_ratio = 0.1,
-                          color_file = NULL,
-                          palettes = NULL) {
-  chrom_df <- read_chrom_sizes(chrom_file)
-  virus_name <- validate_virus_name(virus_name, chrom_df$chr)
+                          virus_length,
+                          visual_ratio = 0.1) {
+  ensure_host_chrom_utils_loaded()
+  host_df <- resolve_host_chrom_sizes(host = host, chrom_file = chrom_file)
+  virus_info <- validate_virus_info(virus_name, virus_length, host_df$chr)
+  virus_name <- virus_info$virus_name
+  virus_length <- virus_info$virus_length
 
   if (!is.numeric(visual_ratio) || length(visual_ratio) != 1 ||
       is.na(visual_ratio) || visual_ratio <= 0 || visual_ratio >= 1) {
     stop("visual_ratio must be a single number between 0 and 1.")
   }
+
+  chrom_df <- rbind(
+    host_df,
+    data.frame(chr = virus_name, start = 0, end = virus_length, stringsAsFactors = FALSE)
+  )
 
   widths <- numeric(nrow(chrom_df))
   names(widths) <- chrom_df$chr
@@ -226,30 +219,10 @@ create_config <- function(chrom_file,
   host_len <- chrom_df$end[host_mask] - chrom_df$start[host_mask]
   widths[host_mask] <- host_len / sum(host_len) * (1 - visual_ratio)
 
-  if (!is.null(color_file) && file.exists(color_file)) {
-    color_df <- utils::read.table(
-      color_file,
-      header = FALSE,
-      sep = "\t",
-      stringsAsFactors = FALSE
-    )
-    grid_col <- stats::setNames(color_df[[2]], color_df[[1]])
-  } else if (has_palette_spec(palettes, c("chromosomes", "chromosome", "chr", "grid"))) {
-    grid_col <- make_chromosome_colors(chrom_df$chr, palettes = palettes)
-  } else {
-    grid_col <- stats::setNames(grDevices::rainbow(nrow(chrom_df)), chrom_df$chr)
-  }
-
-  if (!virus_name %in% names(grid_col) ||
-      !has_palette_spec(palettes, c("chromosomes", "chromosome", "chr", "grid"))) {
-    grid_col[virus_name] <- "grey90"
-  }
-
   list(
     data = chrom_df,
     widths = widths,
-    virus_name = virus_name,
-    grid_col = grid_col
+    virus_name = virus_name
   )
 }
 
@@ -278,14 +251,15 @@ create_gi_from_table <- function(input_file, cfg) {
     stop("data.txt must contain columns: ", paste(required_cols, collapse = ", "))
   }
 
-  host_chr <- match_chr_style(raw$chr, cfg$data$chr)
+  raw$chr <- trimws(gsub("(?i)^chr", "", as.character(raw$chr), perl = TRUE))
+  host_chr <- raw$chr
   virus_chr <- rep(cfg$virus_name, nrow(raw))
   host_pos <- as.numeric(raw$host_loc)
   virus_pos <- as.numeric(raw$viral_loc)
 
-  keep <- !is.na(host_chr) & !is.na(host_pos) & !is.na(virus_pos)
+  keep <- !is.na(host_chr) & host_chr %in% cfg$data$chr & !is.na(host_pos) & !is.na(virus_pos)
   if (!all(keep)) {
-    warning(sum(!keep), " rows were skipped because of missing chromosome or position values.")
+    warning(sum(!keep), " rows were skipped because chromosome names or position values were invalid.")
   }
 
   raw <- raw[keep, , drop = FALSE]
@@ -325,10 +299,13 @@ create_gi_from_table <- function(input_file, cfg) {
 #'
 #' @param height Numeric. Track height.
 #' @param cfg Plotting configuration list.
+#' @param grid_col Optional named vector of sector colors.
+#' @param border_col Border color for ideogram rectangles.
 #' @return Invisibly returns \code{NULL}.
 #' @export
-draw_ideogram <- function(height, cfg) {
+draw_ideogram <- function(height, cfg, grid_col = NULL, border_col = "white") {
   ideogram_df <- cfg$data[, c("chr", "start", "end"), drop = FALSE]
+  grid_col <- resolve_ideogram_colors(cfg, grid_col = grid_col)
 
   circlize::circos.genomicTrackPlotRegion(
     data = ideogram_df,
@@ -338,11 +315,7 @@ draw_ideogram <- function(height, cfg) {
     panel.fun = function(region, value, ...) {
       chr <- circlize::CELL_META$sector.index
       xlim <- circlize::CELL_META$cell.xlim
-      fill_col <- cfg$grid_col[chr]
-
-      if (length(fill_col) == 0 || is.na(fill_col)) {
-        fill_col <- "grey90"
-      }
+      fill_col <- grid_col[chr]
 
       circlize::circos.genomicRect(
         region = region,
@@ -350,20 +323,20 @@ draw_ideogram <- function(height, cfg) {
         ybottom = 0,
         ytop = 1,
         col = fill_col,
-        border = "white"
+        border = border_col
       )
 
       circlize::circos.text(
-        mean(xlim), 1.05, chr,
+        mean(xlim), 1.2, chr,
         facing = "bending.inside",
         niceFacing = TRUE,
-        adj = c(0.5, 0),
-        cex = 0.8
+        adj = c(0.5, -0.4),
+        cex = 0.95
       )
 
       axis_labels <- make_axis_labels(xlim, use_kb = chr == cfg$virus_name)
       circlize::circos.axis(
-        h = 1.02,
+        h = 1.1,
         major.at = axis_labels$at,
         labels = axis_labels$labels,
         labels.cex = 0.4,
@@ -381,10 +354,13 @@ draw_ideogram <- function(height, cfg) {
 #' @param data Data frame converted from a \code{GInteractions} object.
 #' @param height Numeric. Track height.
 #' @param cfg Plotting configuration list.
+#' @param method_col Optional named vector of colors for different methods.
 #' @param point_color Default point color.
+#' @param baseline_col Baseline color for the scatter track.
 #' @return Invisibly returns \code{NULL}.
 #' @export
-draw_scatter <- function(data, height, cfg, point_color = "blue") {
+draw_scatter <- function(data, height, cfg, method_col = NULL,
+                         point_color = "blue", baseline_col = "grey90") {
   if (is.null(data) || nrow(data) == 0) {
     return(invisible(NULL))
   }
@@ -396,7 +372,7 @@ draw_scatter <- function(data, height, cfg, point_color = "blue") {
 
   depth <- if ("Depth" %in% colnames(data)) data$Depth else rep(10, nrow(data))
   source_col <- if ("Source" %in% colnames(data)) as.character(data$Source) else rep("integration", nrow(data))
-  col_map <- if (is.null(cfg$method_col)) make_method_colors(source_col) else cfg$method_col
+  col_map <- resolve_method_colors(source_col, method_col = method_col)
   pt_col <- col_map[source_col]
   pt_col[is.na(pt_col)] <- point_color
 
@@ -416,7 +392,7 @@ draw_scatter <- function(data, height, cfg, point_color = "blue") {
     track.height = height,
     bg.border = NA,
     panel.fun = function(region, value, ...) {
-      circlize::circos.lines(circlize::CELL_META$cell.xlim, c(0.5, 0.5), col = "grey90")
+      circlize::circos.lines(circlize::CELL_META$cell.xlim, c(0.5, 0.5), col = baseline_col)
 
       if (nrow(region) > 0) {
         circlize::circos.genomicPoints(
@@ -439,20 +415,23 @@ draw_scatter <- function(data, height, cfg, point_color = "blue") {
 #' @param link_data Data frame converted from a \code{GInteractions} object.
 #' @param cfg Plotting configuration list.
 #' @param radius Optional link radius.
+#' @param method_col Optional named vector of colors for different methods.
+#' @param default_col Fallback link color.
 #' @return Invisibly returns \code{NULL}.
 #' @export
-draw_link <- function(link_data, cfg, radius = NULL) {
+draw_link <- function(link_data, cfg, radius = NULL, method_col = NULL,
+                      default_col = "grey") {
   if (is.null(link_data) || nrow(link_data) == 0) {
     return(invisible(NULL))
   }
 
   source_col <- if ("Source" %in% colnames(link_data)) as.character(link_data$Source) else rep("integration", nrow(link_data))
-  col_map <- if (is.null(cfg$method_col)) make_method_colors(source_col) else cfg$method_col
+  col_map <- resolve_method_colors(source_col, method_col = method_col)
 
   for (i in seq_len(nrow(link_data))) {
     link_col <- col_map[source_col[i]]
     if (is.na(link_col)) {
-      link_col <- "grey"
+      link_col <- default_col
     }
 
     region1 <- data.frame(
@@ -476,7 +455,15 @@ draw_link <- function(link_data, cfg, radius = NULL) {
   invisible(NULL)
 }
 
-draw_histogram <- function(data, height, cfg, bins = NULL) {
+#' Draw Histogram Track in Genomic Mode
+#'
+#' @param data Data frame converted from a \code{GInteractions} object.
+#' @param height Numeric. Track height.
+#' @param cfg Plotting configuration list.
+#' @param bins Number of genomic bins per sector.
+#' @param col Histogram fill color.
+#' @return Invisibly returns \code{NULL}.
+draw_histogram <- function(data, height, cfg, bins = NULL, col = "grey70") {
   if (is.null(data) || nrow(data) == 0) {
     return(invisible(NULL))
   }
@@ -496,7 +483,6 @@ draw_histogram <- function(data, height, cfg, bins = NULL) {
   if (!is.finite(max_count) || max_count <= 0) {
     max_count <- 1
   }
-  hist_col <- if (is.null(cfg$hist_col)) make_histogram_color() else cfg$hist_col
 
   circlize::circos.genomicTrackPlotRegion(
     data = hist_df,
@@ -510,7 +496,7 @@ draw_histogram <- function(data, height, cfg, bins = NULL) {
           value,
           ybottom = 0,
           ytop = value$count,
-          col = hist_col,
+          col = col,
           border = NA
         )
       }
@@ -576,6 +562,17 @@ draw_method_legend <- function(method_col) {
   invisible(NULL)
 }
 
+get_method_legend_spec <- function(layout_list, plot_df) {
+  for (task in layout_list) {
+    if (task$type %in% c("scatter", "links")) {
+      methods <- if ("Source" %in% colnames(plot_df)) as.character(plot_df$Source) else "integration"
+      return(resolve_method_colors(methods, method_col = task$method_col))
+    }
+  }
+
+  NULL
+}
+
 filter_plot_data <- function(plot_df, sample_label = NULL) {
   if (is.null(sample_label)) {
     return(plot_df)
@@ -584,123 +581,64 @@ filter_plot_data <- function(plot_df, sample_label = NULL) {
   plot_df[plot_df$Label %in% sample_label, , drop = FALSE]
 }
 
-layout_has_any <- function(layout_list, types) {
-  any(vapply(layout_list, function(x) x$type %in% types, logical(1)))
+resolve_ideogram_colors <- function(cfg, grid_col = NULL) {
+  chr <- as.character(cfg$data$chr)
+  if (is.null(grid_col)) {
+    grid_col <- stats::setNames(grDevices::rainbow(length(chr)), chr)
+  } else {
+    grid_col <- normalize_named_colors(grid_col, chr)
+  }
+
+  if (!cfg$virus_name %in% names(grid_col) || is.na(grid_col[cfg$virus_name])) {
+    grid_col[cfg$virus_name] <- "grey70"
+  }
+
+  grid_col
 }
 
-make_chromosome_colors <- function(chr, palettes = NULL) {
-  palette <- get_palette_spec(
-    palettes = palettes,
-    names = c("chromosomes", "chromosome", "chr", "grid"),
-    default = "Set3"
-  )
-
-  make_named_colors(chr, palette)
-}
-
-make_method_colors <- function(methods, palettes = NULL) {
+resolve_method_colors <- function(methods, method_col = NULL) {
   methods <- sort(unique(as.character(methods)))
   methods <- methods[!is.na(methods) & nzchar(methods)]
   if (length(methods) == 0) {
     methods <- "integration"
   }
 
-  palette <- get_palette_spec(
-    palettes = palettes,
-    names = c("methods", "method"),
-    default = "Dark2"
-  )
-
-  make_named_colors(methods, palette)
-}
-
-make_histogram_color <- function(palettes = NULL) {
-  palette <- get_palette_spec(
-    palettes = palettes,
-    names = c("histogram", "hist"),
-    default = "Blues"
-  )
-
-  if (length(palette) > 1) {
-    return(palette[[min(2, length(palette))]])
-  }
-
-  if (!is_brewer_palette(palette)) {
-    return(palette)
-  }
-
-  brewer_colors(3, palette)[2]
-}
-
-get_palette_spec <- function(palettes, names, default) {
-  if (is.null(palettes)) {
-    return(default)
-  }
-
-  matched <- intersect(names, names(palettes))
-  if (length(matched) > 0) {
-    return(palettes[[matched[1]]])
-  }
-
-  if (is.character(palettes) && is.null(names(palettes)) && length(palettes) == 1) {
-    return(palettes)
-  }
-
-  default
-}
-
-has_palette_spec <- function(palettes, names) {
-  !is.null(palettes) && length(intersect(names, names(palettes))) > 0
-}
-
-make_named_colors <- function(keys, palette) {
-  keys <- as.character(keys)
-  keys <- keys[!is.na(keys) & nzchar(keys)]
-
-  if (length(keys) == 0) {
-    return(stats::setNames(character(0), character(0)))
-  }
-
-  if (length(palette) > 1) {
-    if (!is.null(names(palette))) {
-      matched <- palette[keys]
-      missing <- is.na(matched)
-      if (any(missing)) {
-        matched[missing] <- expand_colors(unname(palette), sum(missing))
-      }
-      return(stats::setNames(unname(matched), keys))
+  if (is.null(method_col)) {
+    base_col <- c(
+      Pos = "#D55E00",
+      PB = "#0072B2",
+      integration = "#009E73"
+    )
+    method_col <- base_col[methods]
+    missing <- is.na(method_col)
+    if (any(missing)) {
+      method_col[missing] <- grDevices::hcl.colors(sum(missing), "Dark 3")
     }
-    return(stats::setNames(expand_colors(palette, length(keys)), keys))
+    return(stats::setNames(unname(method_col), methods))
   }
 
-  if (!is_brewer_palette(palette)) {
-    return(stats::setNames(rep(palette, length(keys)), keys))
-  }
-
-  stats::setNames(brewer_colors(length(keys), palette), keys)
+  normalize_named_colors(method_col, methods)
 }
 
-brewer_colors <- function(n, palette) {
-  if (!is_brewer_palette(palette)) {
-    stop("Unknown RColorBrewer palette: ", palette, call. = FALSE)
+normalize_named_colors <- function(colors, keys) {
+  if (is.null(colors)) {
+    return(stats::setNames(rep(NA_character_, length(keys)), keys))
   }
 
-  max_colors <- RColorBrewer::brewer.pal.info[palette, "maxcolors"]
-  base_n <- min(max(n, 3), max_colors)
-  base_colors <- RColorBrewer::brewer.pal(base_n, palette)
-  expand_colors(base_colors, n)
-}
-
-is_brewer_palette <- function(palette) {
-  length(palette) == 1 && palette %in% rownames(RColorBrewer::brewer.pal.info)
-}
-
-expand_colors <- function(colors, n) {
-  if (n <= length(colors)) {
-    return(colors[seq_len(n)])
+  if (!is.null(names(colors))) {
+    matched <- colors[keys]
+    missing <- is.na(matched)
+    if (any(missing)) {
+      matched[missing] <- rep(unname(colors)[1], sum(missing))
+    }
+    return(stats::setNames(unname(matched), keys))
   }
 
-  grDevices::colorRampPalette(colors)(n)
+  if (length(colors) == 1) {
+    return(stats::setNames(rep(colors, length(keys)), keys))
+  }
+
+  stats::setNames(rep(colors, length.out = length(keys)), keys)
 }
 
 validate_layout_list <- function(layout_list) {
@@ -708,10 +646,36 @@ validate_layout_list <- function(layout_list) {
     stop("layout_list must contain at least one track definition.")
   }
 
+  invalid_obj_idx <- which(!vapply(layout_list, is.list, logical(1)))
+  if (length(invalid_obj_idx) > 0) {
+    stop("Every layout item must be a list. Invalid index: ",
+         paste(invalid_obj_idx, collapse = ", "))
+  }
+
   invalid_idx <- which(vapply(layout_list, function(x) is.null(x$type) || !nzchar(x$type), logical(1)))
   if (length(invalid_idx) > 0) {
     stop("Every layout item must include a non-empty type. Invalid index: ",
          paste(invalid_idx, collapse = ", "))
+  }
+
+  valid_types <- c("ideogram", "scatter", "histogram", "links")
+  invalid_type_idx <- which(vapply(layout_list, function(x) !x$type %in% valid_types, logical(1)))
+  if (length(invalid_type_idx) > 0) {
+    stop("Unsupported layout type at index: ",
+         paste(invalid_type_idx, collapse = ", "),
+         ". Supported types: ", paste(valid_types, collapse = ", "),
+         call. = FALSE)
+  }
+
+  scatter_missing_label <- which(vapply(
+    layout_list,
+    function(x) identical(x$type, "scatter") && (is.null(x$sample_label) || !nzchar(x$sample_label)),
+    logical(1)
+  ))
+  if (length(scatter_missing_label) > 0) {
+    stop("Each scatter layout item must include a non-empty sample_label. Invalid index: ",
+         paste(scatter_missing_label, collapse = ", "),
+         call. = FALSE)
   }
 
   invisible(NULL)
@@ -741,21 +705,4 @@ make_axis_labels <- function(xlim, use_kb = FALSE) {
     labels = major_labels,
     unit = axis_unit
   )
-}
-
-match_chr_style <- function(chr, valid_chr) {
-  chr <- as.character(chr)
-  valid_chr <- as.character(valid_chr)
-
-  stripped <- sub("^chr", "", chr, ignore.case = TRUE)
-  prefixed <- ifelse(grepl("^chr", chr, ignore.case = TRUE), chr, paste0("chr", chr))
-
-  out <- chr
-  use_stripped <- !out %in% valid_chr & stripped %in% valid_chr
-  out[use_stripped] <- stripped[use_stripped]
-
-  use_prefixed <- !out %in% valid_chr & prefixed %in% valid_chr
-  out[use_prefixed] <- prefixed[use_prefixed]
-
-  out
 }
