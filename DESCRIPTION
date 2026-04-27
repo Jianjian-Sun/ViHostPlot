@@ -1,6 +1,6 @@
 Package: ViHostPlot
 Title: Visualize Host-Virus Integration Events
-Version: 0.0.3
+Version: 0.0.4
 Authors@R: 
     person(given = "ViHostPlot", family = "Developers",
            email = "maintainer@example.com", role = c("aut", "cre"))
