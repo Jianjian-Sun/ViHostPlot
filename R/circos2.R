@@ -130,32 +130,6 @@ visualize_viral_integration <- function(input_file,
   invisible(list(cfg = cfg, gi = gi, data = plot_df))
 }
 
-ensure_host_chrom_utils_loaded <- function() {
-  needed <- c(
-    "read_chrom_sizes",
-    "resolve_ucsc_assembly",
-    "fetch_ucsc_chrom_sizes",
-    "resolve_host_chrom_sizes"
-  )
-
-  if (all(vapply(needed, exists, logical(1), mode = "function", inherits = TRUE))) {
-    return(invisible(TRUE))
-  }
-
-  helper_path <- file.path(getwd(), "host_chrom_utils.R")
-  if (!file.exists(helper_path)) {
-    stop("host_chrom_utils.R was not found in the current working directory.", call. = FALSE)
-  }
-
-  sys.source(helper_path, envir = .GlobalEnv)
-
-  if (!all(vapply(needed, exists, logical(1), mode = "function", inherits = TRUE))) {
-    stop("Failed to load host chromosome helper functions from host_chrom_utils.R.", call. = FALSE)
-  }
-
-  invisible(TRUE)
-}
-
 validate_virus_info <- function(virus_name, virus_length, host_chr) {
   if (missing(virus_name) || is.null(virus_name) || length(virus_name) != 1 ||
       is.na(virus_name) || !nzchar(virus_name)) {
@@ -195,7 +169,6 @@ create_config <- function(host = NULL,
                           virus_name,
                           virus_length,
                           visual_ratio = 0.1) {
-  ensure_host_chrom_utils_loaded()
   host_df <- resolve_host_chrom_sizes(host = host, chrom_file = chrom_file)
   virus_info <- validate_virus_info(virus_name, virus_length, host_df$chr)
   virus_name <- virus_info$virus_name
