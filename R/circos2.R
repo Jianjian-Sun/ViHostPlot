@@ -84,39 +84,58 @@ visualize_viral_integration <- function(input_file,
     height <- if (is.null(task$height)) 0.05 else task$height
 
     if (task$type == "ideogram") {
-      draw_ideogram(
-        height = height,
-        cfg = cfg,
-        grid_col = task$grid_col,
-        border_col = task$border_col
-      )
+      args <- list(height = height, cfg = cfg)
+      if (!is.null(task$grid_col)) {
+        args$grid_col <- task$grid_col
+      }
+      if (!is.null(task$border_col)) {
+        args$border_col <- task$border_col
+      }
+      do.call(draw_ideogram, args)
     } else if (task$type == "scatter") {
       sub_df <- filter_plot_data(plot_df, sample_label = task$sample_label)
-      draw_scatter(
-        data = sub_df,
-        height = height,
-        cfg = cfg,
-        method_col = task$method_col,
-        point_color = task$point_color,
-        baseline_col = task$baseline_col
-      )
+      args <- list(data = sub_df, height = height, cfg = cfg)
+      if (!is.null(task$sample_label)) {
+        args$track_label <- task$sample_label
+      }
+      if (!is.null(task$method_col)) {
+        args$method_col <- task$method_col
+      }
+      if (!is.null(task$point_color)) {
+        args$point_color <- task$point_color
+      }
+      if (!is.null(task$baseline_col)) {
+        args$baseline_col <- task$baseline_col
+      }
+      do.call(draw_scatter, args)
     } else if (task$type == "histogram") {
       sub_df <- filter_plot_data(plot_df, sample_label = task$sample_label)
-      draw_histogram(
-        data = sub_df,
-        height = height,
-        cfg = cfg,
-        bins = task$bins,
-        col = task$col
-      )
+      args <- list(data = sub_df, height = height, cfg = cfg)
+      if (!is.null(task$sample_label)) {
+        args$track_label <- task$sample_label
+      }
+      if (!is.null(task$bins)) {
+        args$bins <- task$bins
+      }
+      if (!is.null(task$col)) {
+        args$col <- task$col
+      }
+      do.call(draw_histogram, args)
     } else if (task$type == "links") {
-      draw_link(
-        link_data = plot_df,
-        cfg = cfg,
-        radius = task$radius,
-        method_col = task$method_col,
-        default_col = task$default_col
-      )
+      args <- list(link_data = plot_df, cfg = cfg)
+      if (!is.null(task$radius)) {
+        args$radius <- task$radius
+      }
+      if (!is.null(task$lwd)) {
+        args$lwd <- task$lwd
+      }
+      if (!is.null(task$method_col)) {
+        args$method_col <- task$method_col
+      }
+      if (!is.null(task$default_col)) {
+        args$default_col <- task$default_col
+      }
+      do.call(draw_link, args)
     } else {
       warning("Skipping unsupported track type: ", task$type)
     }
@@ -327,12 +346,13 @@ draw_ideogram <- function(height, cfg, grid_col = NULL, border_col = "white") {
 #' @param data Data frame converted from a \code{GInteractions} object.
 #' @param height Numeric. Track height.
 #' @param cfg Plotting configuration list.
+#' @param track_label Optional track label to draw on the HBV sector.
 #' @param method_col Optional named vector of colors for different methods.
 #' @param point_color Default point color.
 #' @param baseline_col Baseline color for the scatter track.
 #' @return Invisibly returns \code{NULL}.
 #' @export
-draw_scatter <- function(data, height, cfg, method_col = NULL,
+draw_scatter <- function(data, height, cfg, track_label = NULL, method_col = NULL,
                          point_color = "blue", baseline_col = "grey90") {
   if (is.null(data) || nrow(data) == 0) {
     return(invisible(NULL))
@@ -348,15 +368,29 @@ draw_scatter <- function(data, height, cfg, method_col = NULL,
   col_map <- resolve_method_colors(source_col, method_col = method_col)
   pt_col <- col_map[source_col]
   pt_col[is.na(pt_col)] <- point_color
+  pt_col <- grDevices::adjustcolor(pt_col, alpha.f = 0.6)
+  pt_cex <- log10(depth + 1) / max_depth * 1.5 + 0.5
+  cex_range <- range(pt_cex, na.rm = TRUE)
+  if (!all(is.finite(cex_range)) || diff(cex_range) == 0) {
+    pt_y <- rep(0.12, length(pt_cex))
+  } else {
+    pt_y <- 0.08 + (pt_cex - cex_range[1]) / diff(cex_range) * (0.16 - 0.08)
+  }
 
   scatter_df <- data.frame(
     chr = as.character(data$seqnames1),
     start = data$start1,
     end = data$end1,
-    y = 0.5,
-    cex = log10(depth + 1) / max_depth * 1.5 + 0.5,
+    y = pt_y,
+    cex = pt_cex,
     pt_col = pt_col,
     stringsAsFactors = FALSE
+  )
+  scatter_df <- ensure_virus_track_row(
+    df = scatter_df,
+    virus_name = cfg$virus_name,
+    virus_length = cfg$data$end[cfg$data$chr == cfg$virus_name][1],
+    defaults = list(y = 0.72, cex = 0, pt_col = NA_character_)
   )
 
   circlize::circos.genomicTrackPlotRegion(
@@ -365,7 +399,8 @@ draw_scatter <- function(data, height, cfg, method_col = NULL,
     track.height = height,
     bg.border = NA,
     panel.fun = function(region, value, ...) {
-      circlize::circos.lines(circlize::CELL_META$cell.xlim, c(0.5, 0.5), col = baseline_col)
+      chr <- circlize::CELL_META$sector.index
+      circlize::circos.lines(circlize::CELL_META$cell.xlim, c(0, 0), col = baseline_col)
 
       if (nrow(region) > 0) {
         circlize::circos.genomicPoints(
@@ -376,6 +411,10 @@ draw_scatter <- function(data, height, cfg, method_col = NULL,
           col = value$pt_col,
           cex = value$cex
         )
+      }
+
+      if (!is.null(track_label) && identical(chr, cfg$virus_name)) {
+        draw_track_label(track_label, y = 0.72)
       }
     }
   )
@@ -388,11 +427,12 @@ draw_scatter <- function(data, height, cfg, method_col = NULL,
 #' @param link_data Data frame converted from a \code{GInteractions} object.
 #' @param cfg Plotting configuration list.
 #' @param radius Optional link radius.
+#' @param lwd Link line width.
 #' @param method_col Optional named vector of colors for different methods.
 #' @param default_col Fallback link color.
 #' @return Invisibly returns \code{NULL}.
 #' @export
-draw_link <- function(link_data, cfg, radius = NULL, method_col = NULL,
+draw_link <- function(link_data, cfg, radius = NULL, lwd = 0.35, method_col = NULL,
                       default_col = "grey") {
   if (is.null(link_data) || nrow(link_data) == 0) {
     return(invisible(NULL))
@@ -419,9 +459,9 @@ draw_link <- function(link_data, cfg, radius = NULL, method_col = NULL,
     )
 
     if (is.null(radius)) {
-      circlize::circos.genomicLink(region1, region2, col = link_col, border = link_col)
+      circlize::circos.genomicLink(region1, region2, col = link_col, border = link_col, lwd = lwd)
     } else {
-      circlize::circos.genomicLink(region1, region2, rou = radius, col = link_col, border = link_col)
+      circlize::circos.genomicLink(region1, region2, rou = radius, col = link_col, border = link_col, lwd = lwd)
     }
   }
 
@@ -433,10 +473,11 @@ draw_link <- function(link_data, cfg, radius = NULL, method_col = NULL,
 #' @param data Data frame converted from a \code{GInteractions} object.
 #' @param height Numeric. Track height.
 #' @param cfg Plotting configuration list.
+#' @param track_label Optional track label to draw on the HBV sector.
 #' @param bins Number of genomic bins per sector.
 #' @param col Histogram fill color.
 #' @return Invisibly returns \code{NULL}.
-draw_histogram <- function(data, height, cfg, bins = NULL, col = "grey70") {
+draw_histogram <- function(data, height, cfg, track_label = NULL, bins = NULL, col = "grey70") {
   if (is.null(data) || nrow(data) == 0) {
     return(invisible(NULL))
   }
@@ -448,6 +489,12 @@ draw_histogram <- function(data, height, cfg, bins = NULL, col = "grey70") {
   bins <- as.integer(bins)
 
   hist_df <- make_histogram_data(data = data, cfg = cfg, bins = bins)
+  hist_df <- ensure_virus_track_row(
+    df = hist_df,
+    virus_name = cfg$virus_name,
+    virus_length = cfg$data$end[cfg$data$chr == cfg$virus_name][1],
+    defaults = list(count = 0)
+  )
   if (nrow(hist_df) == 0) {
     return(invisible(NULL))
   }
@@ -463,6 +510,7 @@ draw_histogram <- function(data, height, cfg, bins = NULL, col = "grey70") {
     track.height = height,
     bg.border = NA,
     panel.fun = function(region, value, ...) {
+      chr <- circlize::CELL_META$sector.index
       if (nrow(region) > 0) {
         circlize::circos.genomicRect(
           region,
@@ -472,6 +520,10 @@ draw_histogram <- function(data, height, cfg, bins = NULL, col = "grey70") {
           col = col,
           border = NA
         )
+      }
+
+      if (!is.null(track_label) && identical(chr, cfg$virus_name)) {
+        draw_track_label(track_label, y = max_count * 0.8)
       }
     }
   )
@@ -554,10 +606,55 @@ filter_plot_data <- function(plot_df, sample_label = NULL) {
   plot_df[plot_df$Label %in% sample_label, , drop = FALSE]
 }
 
+ensure_virus_track_row <- function(df, virus_name, virus_length, defaults = list()) {
+  if (is.null(virus_name) || is.na(virus_name) || !nzchar(virus_name)) {
+    return(df)
+  }
+
+  if (virus_name %in% df$chr) {
+    return(df)
+  }
+
+  extra <- data.frame(
+    chr = virus_name,
+    start = 0,
+    end = virus_length,
+    stringsAsFactors = FALSE
+  )
+
+  for (nm in names(defaults)) {
+    extra[[nm]] <- defaults[[nm]]
+  }
+
+  missing_cols <- setdiff(colnames(df), colnames(extra))
+  for (nm in missing_cols) {
+    extra[[nm]] <- NA
+  }
+
+  extra <- extra[, colnames(df), drop = FALSE]
+  rbind(df, extra)
+}
+
+draw_track_label <- function(label, y, x_frac = 0.5, cex = 1.8, col = "black") {
+  xlim <- circlize::CELL_META$cell.xlim
+  x <- xlim[1] + diff(xlim) * x_frac
+
+  circlize::circos.text(
+    x = x,
+    y = y,
+    labels = label,
+    facing = "inside",
+    niceFacing = TRUE,
+    adj = c(0.5, 0.5),
+    cex = cex,
+    col = col
+  )
+}
+
 resolve_ideogram_colors <- function(cfg, grid_col = NULL) {
   chr <- as.character(cfg$data$chr)
   if (is.null(grid_col)) {
-    grid_col <- stats::setNames(grDevices::rainbow(length(chr)), chr)
+    grid_col <- stats::setNames(grDevices::hcl.colors(length(chr), "Set 2"), chr)
   } else {
     grid_col <- normalize_named_colors(grid_col, chr)
   }
@@ -578,9 +675,9 @@ resolve_method_colors <- function(methods, method_col = NULL) {
 
   if (is.null(method_col)) {
     base_col <- c(
-      Pos = "#D55E00",
-      PB = "#0072B2",
-      integration = "#009E73"
+      Pos = "#C77C7C",
+      PB = "#7B9ACC",
+      integration = "#7FB77E"
     )
     method_col <- base_col[methods]
     missing <- is.na(method_col)
