@@ -5,7 +5,15 @@
 #' @param clinical_vars A character vector or list defining clinical variables to display as bottom tracks.
 #' @param n_breaks Integer. Number of breaks for continuous clinical variables. Default is 5.
 #' @param colors A named list of customized colors for clinical tracks.
-#' @param clinical_palettes A named list or character vector of RColorBrewer palettes for clinical tracks.
+#'   If omitted for a clinical variable, a scientific fallback palette is used:
+#'   Okabe-Ito colors for discrete variables and Viridis-style colors for
+#'   binned continuous variables.
+#' @param sort_by Character. Clinical variable used to sort samples left-to-right.
+#'   When \code{NULL}, sample order follows the oncoplot matrix default.
+#' @param clinical_order Named list of character vectors giving custom level order
+#'   per clinical variable. Used when \code{sort_by} matches a list name; if omitted
+#'   for the sorting variable, samples are ordered by increasing values (numeric)
+#'   or alphabetically (categorical).
 #'
 #' @returns A combined plot object (class depends on \code{aplot} output).
 #' @importFrom aplot insert_top insert_right insert_bottom
@@ -17,14 +25,28 @@
 #' laml <- maftools::read.maf(maf = laml.maf, clinicalData = laml.clin)
 #' var_names <- c("FAB_classification", "days_to_last_followup")
 #' oncoplot(maf = laml, genes = 20, clinical_vars = var_names)
+#' oncoplot(maf = laml, genes = 20, clinical_vars = var_names,
+#'           sort_by = "FAB_classification")
+#' oncoplot(maf = laml, genes = 20, clinical_vars = var_names,
+#'           sort_by = "FAB_classification",
+#'           clinical_order = list(FAB_classification = c("M0", "M1", "M2")))
 #' }
-oncoplot <- function(maf, genes = 20, clinical_vars = NULL, n_breaks = 5,
-                     colors = NULL, clinical_palettes = NULL) {
+utils::globalVariables(".data")
 
-  p_main <- oncoplot_main(maf, genes)
-  p_top <- aplotExtra:::oncoplot_sample(maf, genes)
+oncoplot <- function(maf, genes = 20, clinical_vars = NULL, n_breaks = 5,
+                     colors = NULL, sort_by = NULL,
+                     clinical_order = NULL) {
+
+  sample_order <- oncoplot_resolve_sample_order(
+    maf, genes, sort_by = sort_by, clinical_order = clinical_order
+  )
+
+  p_main <- oncoplot_main(maf, genes, sample_order = sample_order)
+  p_top <- oncoplot_apply_sample_order(
+    aplotExtra:::oncoplot_sample(maf, genes), sample_order
+  )
   p_right <- aplotExtra:::oncoplot_gene(maf, genes, ylab = 'percentage')
-  p_spacer <- ggplot() + ggfun::theme_transparent()
+  p_spacer <- ggplot2::ggplot() + ggfun::theme_transparent()
 
   # Base assembly using aplot
   pp <- p_main |>
@@ -34,7 +56,7 @@ oncoplot <- function(maf, genes = 20, clinical_vars = NULL, n_breaks = 5,
 
   tracks <- oncoplot_clinical_track(maf, genes = genes, clinical_vars = clinical_vars,
                                     n_breaks = n_breaks, colors = colors,
-                                    clinical_palettes = clinical_palettes)
+                                    sample_order = sample_order)
 
   if (length(tracks) > 0) {
     for (var in names(tracks)) {
@@ -48,25 +70,32 @@ oncoplot <- function(maf, genes = 20, clinical_vars = NULL, n_breaks = 5,
 
 #' @importFrom ggplot2 geom_tile
 #' @importFrom rlang .data
-oncoplot_main <- function(maf, genes = 20) {
+oncoplot_main <- function(maf, genes = 20, sample_order = NULL) {
   d <- aplotExtra:::oncoplot_tidy_onco_matrix(maf, genes)
+  if (!is.null(sample_order)) {
+    d$Sample <- factor(as.character(d$Sample), levels = sample_order)
+  }
 
-  p <- ggplot(d, aes(x = .data$Sample, y = .data$Gene, fill = .data$Type)) +
-    geom_tile(colour="white", linewidth=.01) + 
+  .data <- rlang::.data
+  p <- ggplot2::ggplot(
+    d,
+    ggplot2::aes(x = .data$Sample, y = .data$Gene, fill = .data$Type)
+  ) +
+    ggplot2::geom_tile(colour = "white", linewidth = .01) +
     oncoplot_setting(continuous = FALSE, fill_name = "Mutation Type") +
-    theme(
-        legend.position = "right", 
-        axis.text.y.left = element_text(face='italic')
+    ggplot2::theme(
+        legend.position = "right",
+        axis.text.y.left = ggplot2::element_text(face = 'italic')
     )
+
+  p
 }
 
 #' @importFrom maftools getClinicalData
-#' @importFrom RColorBrewer brewer.pal
-#' @importFrom grDevices colorRampPalette
 #' @importFrom rlang .data
 #' @importFrom dplyr select mutate transmute all_of
 oncoplot_clinical_track <- function(maf, genes = 20, clinical_vars, n_breaks,
-                                    colors = NULL, clinical_palettes = NULL) {
+                                    colors = NULL, sample_order = NULL) {
 
   if (is.null(clinical_vars)) return(list())
 
@@ -76,22 +105,25 @@ oncoplot_clinical_track <- function(maf, genes = 20, clinical_vars, n_breaks,
     colnames(clinical_data)
   )
 
-  onco_matrix <- aplotExtra:::oncoplot_tidy_onco_matrix(maf, genes)
-  sample_order <- unique(as.character(onco_matrix$Sample))
+  if (is.null(sample_order)) {
+    onco_matrix <- aplotExtra:::oncoplot_tidy_onco_matrix(maf, genes)
+    sample_order <- unique(as.character(onco_matrix$Sample))
+  }
 
-  df <- clinical_data |>
-    dplyr::select(.data$Tumor_Sample_Barcode, dplyr::all_of(var_names)) |>
-    dplyr::mutate(Tumor_Sample_Barcode = factor(.data$Tumor_Sample_Barcode,
-                                                levels = sample_order))
+  df <- clinical_data[, c("Tumor_Sample_Barcode", var_names), drop = FALSE]
+  df$Tumor_Sample_Barcode <- factor(
+    df$Tumor_Sample_Barcode,
+    levels = sample_order
+  )
 
   plot_list <- list()
 
   for (var in var_names) {
-    tmp <- dplyr::transmute(
-      df,
-      Tumor_Sample_Barcode = .data$Tumor_Sample_Barcode,
-      value = .data[[var]],
-      y_label = var
+    tmp <- data.frame(
+      Tumor_Sample_Barcode = df$Tumor_Sample_Barcode,
+      value = df[[var]],
+      y_label = var,
+      stringsAsFactors = FALSE
     )
     is_continuous <- is.numeric(tmp$value)
 
@@ -101,34 +133,50 @@ oncoplot_clinical_track <- function(maf, genes = 20, clinical_vars, n_breaks,
       as.factor(tmp$value)
     }
 
-    # Used .data$ prefix here to prevent R CMD check "no visible binding" notes
-    p <- ggplot(tmp, aes(x = .data$Tumor_Sample_Barcode, y = .data$y_label, fill = .data$value)) +
-      geom_tile(color = "white", linewidth = 0.01) +
-      theme_minimal() +
-      theme(
+    .data <- rlang::.data
+    p <- ggplot2::ggplot(
+      tmp,
+      ggplot2::aes(
+        x = .data$Tumor_Sample_Barcode,
+        y = .data$y_label,
+        fill = .data$value
+      )
+    ) +
+      ggplot2::geom_tile(color = "white", linewidth = 0.01) +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
         legend.position = "right",
-        axis.text.x = element_blank(),
-        axis.text.y = element_text(face = 'italic', color = "black", size = 10),
-        axis.ticks = element_blank(),
-        axis.title = element_blank(),
-        panel.grid = element_blank(),
-        panel.background = element_blank(),
-        plot.margin = margin(t = 5, r = 2, b = 0, l = 5)
+        axis.text.x = ggplot2::element_blank(),
+        axis.text.y = ggplot2::element_text(face = 'italic', color = "black", size = 10),
+        axis.ticks = ggplot2::element_blank(),
+        axis.title = ggplot2::element_blank(),
+        panel.grid = ggplot2::element_blank(),
+        panel.background = ggplot2::element_blank(),
+        plot.margin = ggplot2::margin(t = 5, r = 2, b = 0, l = 5)
       ) +
-      labs(fill = var)
+      ggplot2::labs(fill = var)
 
     if (!is.null(colors) && var %in% names(colors)) {
-      p <- p + scale_fill_manual(values = colors[[var]], na.value = "grey90")
+      p <- p + ggplot2::scale_fill_manual(values = colors[[var]], na.value = "grey90")
     } else {
-      track_colors <- clinical_track_colors(
-        tmp$value,
-        continuous = is_continuous,
-        var = var,
-        clinical_palettes = clinical_palettes
-      )
-      if (!is.null(track_colors)) {
-        p <- p + scale_fill_manual(values = track_colors, na.value = "grey90")
+      lvls <- levels(as.factor(tmp$value))
+      default_colors <- if (is_continuous) {
+        grDevices::hcl.colors(length(lvls), palette = "Viridis")
+      } else {
+        okabe_ito <- c(
+          "#E69F00", "#56B4E9", "#009E73", "#F0E442",
+          "#0072B2", "#D55E00", "#CC79A7", "#999999"
+        )
+        if (length(lvls) <= length(okabe_ito)) {
+          okabe_ito[seq_along(lvls)]
+        } else {
+          grDevices::hcl.colors(length(lvls), palette = "Dark 3")
+        }
       }
+      p <- p + ggplot2::scale_fill_manual(
+        values = stats::setNames(default_colors, lvls),
+        na.value = "grey90"
+      )
     }
     plot_list[[var]] <- p
   }
@@ -136,88 +184,86 @@ oncoplot_clinical_track <- function(maf, genes = 20, clinical_vars, n_breaks,
   return(plot_list)
 }
 
-clinical_track_colors <- function(x, continuous = FALSE, var = NULL, clinical_palettes = NULL) {
-  lvls <- levels(as.factor(x))
-  n <- length(lvls)
+#' Resolve sample order for oncoplot panels
+#' @noRd
+oncoplot_resolve_sample_order <- function(maf, genes, sort_by = NULL,
+                                          clinical_order = NULL) {
+  onco_matrix <- aplotExtra:::oncoplot_tidy_onco_matrix(maf, genes)
+  default_order <- unique(as.character(onco_matrix$Sample))
 
-  if (n == 0) {
-    return(NULL)
+  if (is.null(sort_by)) {
+    return(default_order)
   }
 
-  palette <- clinical_track_palette(
-    var = var,
-    continuous = continuous,
-    clinical_palettes = clinical_palettes
+  clinical_data <- as.data.frame(maftools::getClinicalData(maf))
+  if (!sort_by %in% colnames(clinical_data)) {
+    stop(
+      "sort_by variable '", sort_by,
+      "' was not found in clinical data.",
+      call. = FALSE
+    )
+  }
+
+  custom_order <- NULL
+  if (!is.null(clinical_order) && sort_by %in% names(clinical_order)) {
+    custom_order <- clinical_order[[sort_by]]
+  }
+
+  sorted_ids <- oncoplot_sort_samples(
+    clinical_data[, c("Tumor_Sample_Barcode", sort_by), drop = FALSE],
+    var = sort_by,
+    custom_order = custom_order
   )
 
-  if (length(palette) > 1) {
-    base_colors <- palette
-    max_colors <- length(base_colors)
-  } else {
-    max_colors <- clinical_brewer_maxcolors(palette)
-    base_n <- min(max(n, 3), max_colors)
-    base_colors <- brewer.pal(base_n, palette)
-  }
-
-  if (n > max_colors) {
-    values <- colorRampPalette(base_colors)(n)
-  } else {
-    values <- base_colors[seq_len(n)]
-  }
-
-  stats::setNames(values, lvls)
+  sorted_ids <- sorted_ids[sorted_ids %in% default_order]
+  c(sorted_ids, setdiff(default_order, sorted_ids))
 }
 
-clinical_track_palette <- function(var = NULL, continuous = FALSE, clinical_palettes = NULL) {
-  default_palette <- if (continuous) "YlGnBu" else "Set3"
+#' Sort sample barcodes by a clinical variable
+#' @noRd
+oncoplot_sort_samples <- function(clinical_data, var, custom_order = NULL) {
+  ids <- as.character(clinical_data$Tumor_Sample_Barcode)
+  vals <- clinical_data[[var]]
 
-  if (is.null(clinical_palettes)) {
-    return(default_palette)
-  }
-
-  if (!is.null(var) && var %in% names(clinical_palettes)) {
-    return(clinical_palettes[[var]])
-  }
-
-  type_names <- if (continuous) {
-    c("continuous", "numeric", "default_continuous")
+  if (!is.null(custom_order)) {
+    vals_ord <- factor(vals, levels = custom_order)
+    ord <- order(vals_ord, na.last = TRUE)
+  } else if (is.numeric(vals)) {
+    ord <- order(vals, na.last = TRUE)
   } else {
-    c("discrete", "categorical", "factor", "default_discrete")
-  }
-  matched_type <- intersect(type_names, names(clinical_palettes))
-
-  if (length(matched_type) > 0) {
-    return(clinical_palettes[[matched_type[1]]])
+    lvls <- sort(unique(as.character(vals[!is.na(vals)])))
+    vals_ord <- factor(as.character(vals), levels = lvls)
+    ord <- order(vals_ord, na.last = TRUE)
   }
 
-  if (is.character(clinical_palettes) && is.null(names(clinical_palettes)) &&
-      length(clinical_palettes) == 1) {
-    return(clinical_palettes)
-  }
-
-  default_palette
+  ids[ord]
 }
 
-clinical_brewer_maxcolors <- function(palette) {
-  max_colors <- RColorBrewer::brewer.pal.info[palette, "maxcolors"]
-
-  if (length(max_colors) == 0 || is.na(max_colors)) {
-    stop("Unknown RColorBrewer palette: ", palette, call. = FALSE)
+#' Apply sample order to a ggplot object with a Sample aesthetic
+#' @noRd
+oncoplot_apply_sample_order <- function(p, sample_order) {
+  if (is.null(sample_order) || is.null(p) || is.null(p$data) ||
+      !"Sample" %in% names(p$data)) {
+    return(p)
   }
 
-  max_colors
+  p$data$Sample <- factor(as.character(p$data$Sample), levels = sample_order)
+  p
 }
 
 oncoplot_setting <- function(noxaxis = TRUE, continuous = TRUE, scale = 'y',
                              fill_name = NULL) {  
     list(
-        theme_minimal(),
+        ggplot2::theme_minimal(),
         if (noxaxis) ggfun::theme_noxaxis(),
-        theme(legend.position = "none", panel.grid.major = element_blank()),
+        ggplot2::theme(
+          legend.position = "none",
+          panel.grid.major = ggplot2::element_blank()
+        ),
         aplotExtra:::oncoplot_scale(continuous = continuous, scale = scale),
         oncoplot_fill(name = fill_name),
-        xlab(NULL),
-        ylab(NULL)
+        ggplot2::xlab(NULL),
+        ggplot2::ylab(NULL)
     )
 }
 
@@ -233,7 +279,7 @@ oncoplot_fill <- function(breaks = NULL, values = NULL, name = NULL, na.value = 
         breaks <- rev(vc_lev)
     }
 
-    scale_fill_manual(
+    ggplot2::scale_fill_manual(
         name = name,
         breaks = breaks,
         values = values,

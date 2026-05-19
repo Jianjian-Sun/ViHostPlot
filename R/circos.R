@@ -368,7 +368,7 @@ draw_scatter <- function(data, height, cfg, track_label = NULL, method_col = NUL
   col_map <- resolve_method_colors(source_col, method_col = method_col)
   pt_col <- col_map[source_col]
   pt_col[is.na(pt_col)] <- point_color
-  pt_col <- grDevices::adjustcolor(pt_col, alpha.f = 0.6)
+  pt_col <- grDevices::adjustcolor(pt_col, alpha.f = 0.85)
   pt_cex <- log10(depth + 1) / max_depth * 1.5 + 0.5
   cex_range <- range(pt_cex, na.rm = TRUE)
   if (!all(is.finite(cex_range)) || diff(cex_range) == 0) {
@@ -477,7 +477,7 @@ draw_link <- function(link_data, cfg, radius = NULL, lwd = 0.35, method_col = NU
 #' @param bins Number of genomic bins per sector.
 #' @param col Histogram fill color.
 #' @return Invisibly returns \code{NULL}.
-draw_histogram <- function(data, height, cfg, track_label = NULL, bins = NULL, col = "grey70") {
+draw_histogram <- function(data, height, cfg, track_label = NULL, bins = NULL, col = "#4D4D4D") {
   if (is.null(data) || nrow(data) == 0) {
     return(invisible(NULL))
   }
@@ -654,13 +654,13 @@ draw_track_label <- function(label, y, x_frac = 0.5, cex = 1.8, col = "black") {
 resolve_ideogram_colors <- function(cfg, grid_col = NULL) {
   chr <- as.character(cfg$data$chr)
   if (is.null(grid_col)) {
-    grid_col <- stats::setNames(grDevices::hcl.colors(length(chr), "Set 2"), chr)
+    grid_col <- stats::setNames(grDevices::hcl.colors(length(chr), "Dark 3"), chr)
   } else {
     grid_col <- normalize_named_colors(grid_col, chr)
   }
 
-  if (!cfg$virus_name %in% names(grid_col) || is.na(grid_col[cfg$virus_name])) {
-    grid_col[cfg$virus_name] <- "grey70"
+  if (cfg$virus_name %in% names(grid_col)) {
+    grid_col[cfg$virus_name] <- "#595959"
   }
 
   grid_col
